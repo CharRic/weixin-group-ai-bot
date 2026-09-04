@@ -1,0 +1,5 @@
+#!/usr/bin/with-contenv bash
+export PYTHONDONTWRITEBYTECODE=1
+export WECHAT_UI_SCRIPT=/config/bot-ui/ui.py
+cd /bot
+exec python3 -u /bot/bot.py run

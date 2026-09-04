@@ -1,0 +1,7 @@
+{
+  "base_url": "https://api.deepseek.com",
+  "api_key": "replace-with-your-api-key",
+  "model": "deepseek-chat",
+  "max_tokens": 1024,
+  "thinking": "disabled"
+}

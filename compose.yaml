@@ -1,0 +1,33 @@
+name: weixin
+services:
+  desktop:
+    # WeChat Selkies 0.0.16-minimal, verified linux/amd64 manifest.
+    image: docker.io/nickrunning/wechat-selkies@sha256:b2ec45f4975abe246ba380fa987fe3233fea4c1b4aee794b0e553ab09515a379
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18080:3000"
+      - "127.0.0.1:18443:3001"
+    volumes:
+      - ./data/wechat:/config
+      - .:/bot
+      - ./services:/custom-services.d:ro
+      - ./bot_ui:/config/bot-ui
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: Asia/Shanghai
+      LC_ALL: zh_CN.UTF-8
+      AUTO_START_WECHAT: "true"
+      AUTO_START_QQ: "false"
+      CUSTOM_USER: weixin
+      PASSWORD: ${WECHAT_WEB_PASSWORD:?Set WECHAT_WEB_PASSWORD before starting}
+    shm_size: 1gb
+    mem_limit: 1843m
+    memswap_limit: 1843m
+    cpus: 1.0
+    pids_limit: 512
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
