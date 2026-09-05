@@ -82,7 +82,7 @@ def paste(text):
             proc.wait(timeout=3)
 
 
-def select_group(w, group_name):
+def select_group(w, group_name, unique_result=False):
     xdo('key', '--clearmodifiers', 'Escape')
     xdo('mousemove', '--window', w.id, 145, 42, 'click', '1')
     xdo('key', '--clearmodifiers', 'ctrl+a')
@@ -135,7 +135,20 @@ def select_group(w, group_name):
         raise RuntimeError('Exact local group result could not be identified')
     # WeChat keyboard-selects the exact local group result. Enter is stable even
     # when asynchronous network suggestions reorder the popup around it.
-    xdo('key', '--clearmodifiers', 'Return')
+    if unique_result:
+        # Unnamed/member-derived groups are not keyboard-selected by WeChat.
+        # Require one local avatar result and an unchanged popup before clicking.
+        if len(avatars) != 1:
+            raise RuntimeError('Unnamed group search is ambiguous')
+        current = root.get_image(popup.x, popup.y, popup.width, popup.height, 2, 0xffffffff)
+        if current.data != popup_shot.data:
+            raise RuntimeError('Search results changed before selection')
+        # Clicking the avatar toggles a preview instead of opening the chat.
+        # Double-click the label, away from both avatar and info controls.
+        xdo('mousemove', popup.x + 124, popup.y + sum(avatars[0]) // 2,
+            'click', '--repeat', 2, '--delay', 120, '1')
+    else:
+        xdo('key', '--clearmodifiers', 'Return')
     deadline = time.monotonic() + 2
     while time.monotonic() < deadline:
         visible = False
@@ -179,7 +192,7 @@ def main():
         print('Title verification template saved')
         return
     if action == 'open':
-        select_group(w, group_name)
+        select_group(w, group_name, payload.get('select_unique_result', False))
         print('Group candidate opened; visual verification required')
         return
     profiles = json.loads(profiles_path.read_text()) if profiles_path.exists() else {}
@@ -188,7 +201,7 @@ def main():
         for attempt in range(2):
             if profile and profile['group_name'] == group_name and signature(w) == profile['signature']:
                 break
-            select_group(w, group_name)
+            select_group(w, group_name, payload.get('select_unique_result', False))
             deadline = time.monotonic() + 1.5
             previous, stable_since = None, time.monotonic()
             while time.monotonic() < deadline:

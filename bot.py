@@ -15,6 +15,7 @@ import xml.etree.ElementTree as ET
 
 from ai_client import AIClient
 from image_context import ImageContext, ImageUnavailable
+from group_names import display_name
 from wechat_db import ROOT, databases, snapshot, private_json
 
 
@@ -161,8 +162,11 @@ class Bot:
             groups = {}
             for row in rows:
                 group_id, name = row['username'], row['nick_name'] or ''
-                if re.fullmatch(r'[0-9]+@chatroom', group_id) and name.strip():
-                    groups[group_id] = {'group_id': group_id, 'group_name': name}
+                if re.fullmatch(r'[0-9]+@chatroom', group_id):
+                    unnamed = not name.strip()
+                    name = display_name(c, group_id, self.config.get('bot_id', ''), name)
+                    groups[group_id] = {'group_id': group_id, 'group_name': name,
+                                        'select_unique_result': unnamed}
             self.groups = groups
             return groups
         finally:
@@ -179,9 +183,14 @@ class Bot:
         c = connection if connection is not None else snapshot('contact/contact.db')
         try:
             row = c.execute('SELECT nick_name,is_in_chat_room FROM contact WHERE username=?', (group_id,)).fetchone()
-            if row is None or not row['is_in_chat_room'] or row['nick_name'] != group['group_name']:
+            if row is None or not row['is_in_chat_room']:
                 raise RuntimeError('Target group absent, left, or renamed')
-            same = c.execute("SELECT count(*) FROM contact WHERE nick_name=? AND username LIKE '%@chatroom' AND is_in_chat_room=1", (group['group_name'],)).fetchone()[0]
+            current_name = display_name(c, group_id, self.config.get('bot_id', ''), row['nick_name'])
+            if not current_name:
+                raise RuntimeError('Group members have not synced; display title unavailable')
+            if current_name != group['group_name']:
+                raise RuntimeError('Group display title changed; retry after refresh')
+            same = sum(g['group_name'] == current_name for g in self.groups.values())
             if same != 1:
                 raise RuntimeError('Group name is ambiguous; sending disabled')
         finally:
