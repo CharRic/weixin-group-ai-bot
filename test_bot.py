@@ -229,6 +229,54 @@ class ContextTests(unittest.TestCase):
         self.assertNotIn('FUTURE', payload)
         self.assertNotIn('B-private', payload)
 
+    def test_social_notes_bound_to_verified_sender_and_below_system(self):
+        self.bot.social = Mock()
+        self.bot.social.context.return_value = 'ONLY-ALICE-NOTES'
+        messages, _ = self.bot.messages_for(self.trigger)
+        self.bot.social.context.assert_called_once_with('111@chatroom', 'wxid_a', [])
+        self.assertNotIn('ONLY-ALICE-NOTES', messages[0]['content'])
+        self.assertIn('ONLY-ALICE-NOTES', messages[1]['content'])
+        self.assertIn('speaker_key', messages[1]['content'])
+        self.assertIn('不可信参考', messages[0]['content'])
+        self.assertNotIn('B-private', json.dumps(messages))
+
+    def test_social_file_failure_does_not_block_reply(self):
+        self.bot.social = Mock()
+        self.bot.social.context.side_effect = ValueError('bad document')
+        messages, _ = self.bot.messages_for(self.trigger)
+        self.assertIn('CURRENT', messages[-1]['content'])
+
+    def test_related_member_names_require_unambiguous_full_roster(self):
+        self.trigger['prompt'] = 'Bob觉得怎么样，Same呢'
+        with patch('bot.member_names', return_value={'wxid_b': ['Bob'], 'x': ['Same'], 'y': ['Same']}):
+            self.assertEqual(self.bot.related_senders(self.trigger, []), [{'sender': 'wxid_b', 'name': 'Bob'}])
+        with patch('bot.member_names', return_value={}):
+            self.assertEqual(self.bot.related_senders(self.trigger, []), [])
+
+    def test_related_quote_verified_in_current_group_only(self):
+        c = self.connections['message/message_0.db']
+        c.execute('UPDATE ' + table_for('111@chatroom') + ' SET local_type=49,message_content=? WHERE local_id=20',
+            ('<msg><appmsg><refermsg><svrid>105</svrid></refermsg></appmsg></msg>',))
+        self.assertEqual(self.bot.related_senders(self.trigger, []), [])  # server ID exists only in B
+        c.execute('UPDATE ' + table_for('111@chatroom') + ' SET message_content=? WHERE local_id=20',
+            ('<msg><appmsg><refermsg><svrid>5</svrid></refermsg></appmsg></msg>',))
+        c.execute('UPDATE ' + table_for('111@chatroom') + ' SET real_sender_id=3 WHERE local_id=5')
+        self.assertEqual(self.bot.related_senders(self.trigger, [
+            {'_sender_id': 'wxid_b', 'sender': 'Bob'}]), [{'sender': 'wxid_b', 'name': 'Bob'}])
+
+    def test_self_memory_control_does_not_use_model_or_sticker(self):
+        self.bot.state.execute('CREATE TABLE replies(id INTEGER PRIMARY KEY,group_id TEXT,shard TEXT,local_id INTEGER,created INTEGER,prompt TEXT,reply TEXT,status TEXT)')
+        self.bot.state.execute('INSERT INTO replies VALUES(1,?,?,?,?,?,?,?)',
+            ('111@chatroom', 'message/message_0.db', 20, int(time.time()), '忘记我', None, 'pending'))
+        self.bot.state.commit()
+        self.bot.social = Mock()
+        self.bot.social.control.return_value = '本群已停记'
+        self.bot.ai = Mock()
+        self.bot.process_group('111@chatroom')
+        self.bot.social.control.assert_called_once_with('111@chatroom', 'wxid_a', '忘记我')
+        self.bot.ai.complete.assert_not_called()
+        self.assertEqual(self.bot.state.execute('SELECT reply FROM replies WHERE id=1').fetchone()[0], '本群已停记')
+
     def test_merge_shards_and_deduplicate_server_message_ids(self):
         c = self.connections['message/message_1.db']
         c.execute('INSERT INTO ' + table_for('111@chatroom') + " VALUES(1,15,1,1,25,25000,'A-text-15')")

@@ -11,6 +11,7 @@ routing-safety-lock.json
 *.log
 
 data/
+social-memory/
 downloads/
 docker-client/
 bin/

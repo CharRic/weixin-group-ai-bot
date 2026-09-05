@@ -1,6 +1,6 @@
 import sqlite3
 import unittest
-from group_names import display_name
+from group_names import display_name, member_names
 from bot import Bot
 
 
@@ -49,3 +49,7 @@ class UnnamedGroups(unittest.TestCase):
         self.c.execute("UPDATE contact SET nick_name='New' WHERE username='a'")
         with self.assertRaisesRegex(RuntimeError, 'changed'):
             self.bot.verify_group('222@chatroom', self.c)
+
+    def test_full_roster_for_memory_does_not_stop_after_three_members(self):
+        self.assertEqual(set(member_names(self.c, '222@chatroom')), {'a', 'bot', 'b', 'c'})
+        self.assertEqual(member_names(self.c, '111@chatroom'), {})

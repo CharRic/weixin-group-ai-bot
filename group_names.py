@@ -60,3 +60,27 @@ def display_name(connection, group_id, bot_id, nickname):
         return '、'.join(members)
     except (ValueError, UnicodeError, AttributeError, sqlite3.Error):
         return ''
+
+
+def member_names(connection, group_id):
+    """Full room roster for unambiguous name references; never infer from a partial tail."""
+    try:
+        row = connection.execute('SELECT ext_buffer FROM chat_room WHERE username=?', (group_id,)).fetchone()
+        if not row or not row[0] or len(row[0]) > 1024 * 1024:
+            return {}
+        result = {}
+        for number, value in fields(row[0]):
+            if number != 1 or not isinstance(value, bytes):
+                continue
+            member = dict(fields(value))
+            user = member.get(1, b'').decode('utf-8')
+            if not user:
+                continue
+            contact = connection.execute('SELECT remark,nick_name FROM contact WHERE username=?', (user,)).fetchone()
+            names = [member.get(2, b'').decode('utf-8')] + (list(contact) if contact else [])
+            result[user] = list(dict.fromkeys(n for n in names if isinstance(n, str) and n.strip()))
+            if len(result) > 2000:
+                return {}
+        return result
+    except (ValueError, UnicodeError, AttributeError, sqlite3.Error):
+        return {}
