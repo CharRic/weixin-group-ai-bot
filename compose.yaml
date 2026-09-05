@@ -22,8 +22,8 @@ services:
       CUSTOM_USER: weixin
       PASSWORD: ${WECHAT_WEB_PASSWORD:?Set WECHAT_WEB_PASSWORD before starting}
     shm_size: 1gb
-    mem_limit: 1843m
-    memswap_limit: 1843m
+    mem_limit: 2g
+    memswap_limit: 2g
     cpus: 1.0
     pids_limit: 512
     logging:

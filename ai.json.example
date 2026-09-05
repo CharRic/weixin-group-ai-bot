@@ -1,7 +1,9 @@
 {
   "base_url": "https://api.deepseek.com",
   "api_key": "replace-with-your-api-key",
-  "model": "deepseek-chat",
+  "model": "deepseek-v4-flash",
+  "vision_model": "deepseek-v4-flash-vision-exp",
+  "vision_max_tokens": 800,
   "max_tokens": 1024,
   "thinking": "disabled"
 }

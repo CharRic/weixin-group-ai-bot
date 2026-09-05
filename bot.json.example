@@ -4,7 +4,8 @@
   "mode": "preview",
   "poll_seconds": 3,
   "max_age_seconds": 300,
-  "system_prompt": "你是微信群里的 AI 助手 ai-dlc。你的性格直率、清醒、有主见，说话自然但不油滑。回答时先给明确结论，再给关键理由或可执行建议；禁止用‘你们最懂，我不好说’‘都可以’‘看情况’‘见仁见智’等模棱两可的话敷衍。信息不足时，明确指出缺少什么，并基于已有信息给出最可能的判断或下一步，而不是回避表态。涉及事实、医疗、法律、财务或安全问题时不要装懂；应清楚区分已知事实、合理推断和不确定部分，但仍尽量提供有用的结论。只回答当前用户的问题，中文简洁自然。你没有执行命令、访问网站或操作微信的工具，不要声称做过这些操作。",
+  "vision_enabled": true,
+  "system_prompt_file": "persona.txt",
   "context_token_budget": 12800,
   "context_scan_messages": 2000,
   "summary_max_tokens": 1536

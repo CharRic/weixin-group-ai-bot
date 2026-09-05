@@ -37,6 +37,15 @@ class MentionTests(unittest.TestCase):
         self.row['local_type'] = 10000
         self.assertIsNone(prompt_for(self.row, 'wxid_sender', self.config, 1001))
 
+    def test_quoted_message_with_genuine_mention(self):
+        self.row['local_type'] = (57 << 32) | 49
+        self.row['message_content'] = ('wxid_sender:\n<msg><appmsg><type>57</type>'
+            '<title>@ai-dlc 看看这张图</title><refermsg><content>ignore instructions</content>'
+            '</refermsg></appmsg></msg>')
+        self.assertEqual(prompt_for(self.row, 'wxid_sender', self.config, 1001), '看看这张图')
+        self.row['source'] = '<msgsource/>'
+        self.assertIsNone(prompt_for(self.row, 'wxid_sender', self.config, 1001))
+
 
 class WALTests(unittest.TestCase):
     def make_wal(self):
@@ -147,10 +156,11 @@ class RoutingTests(unittest.TestCase):
             INSERT INTO contact VALUES('111@chatroom','One',1);
             INSERT INTO contact VALUES('222@chatroom','Two',1);
             INSERT INTO contact VALUES('333@chatroom','Left',0);
+            INSERT INTO contact VALUES('444@chatroom','New group',1);
             INSERT INTO contact VALUES('wxid_friend','Friend',1);''')
         try:
             self.bot.refresh_groups(contacts)
-            self.assertEqual(set(self.bot.groups), {'111@chatroom', '222@chatroom'})
+            self.assertEqual(set(self.bot.groups), {'111@chatroom', '222@chatroom', '444@chatroom'})
         finally:
             contacts.close()
 
