@@ -139,6 +139,9 @@ def chat_complete(ai, messages, weather, token_budget=12800, extra_tools=(), too
                     if isinstance(args, dict):
                         other_remaining -= 1
                         output = tool_handler(function['name'], args)
+                        if (function['name'] == 'send_sticker' and output.get('status') == 'confirmed'
+                                and output.get('finish_without_text') is True):
+                            return '', {'total_tokens': total}
             except (TypeError, ValueError, KeyError):
                 pass
             inputs.append({'role': 'tool', 'tool_call_id': call['id'],

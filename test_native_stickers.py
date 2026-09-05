@@ -53,6 +53,7 @@ class BoundToolTests(unittest.TestCase):
         self.bot.state = sqlite3.connect(':memory:')
         self.bot.state.row_factory = sqlite3.Row
         self.bot.state.execute('CREATE TABLE sticker_jobs(reply_id INTEGER PRIMARY KEY,group_id TEXT,sticker_id TEXT,status TEXT,created INTEGER)')
+        self.bot.state.execute('CREATE TABLE replies(id INTEGER PRIMARY KEY,group_id TEXT,status TEXT,created INTEGER,prompt TEXT,reply TEXT)')
         self.bot.stickers = Mock()
         self.bot.stickers.search.return_value = {'stickers': [{'id': 'chosen'}]}
         def send(job):
@@ -88,3 +89,62 @@ class BoundToolTests(unittest.TestCase):
         self.assertEqual(self.handle('send_sticker', {'sticker_id': 'chosen'})['status'], 'failed_or_uncertain')
         self.handle('send_sticker', {'sticker_id': 'chosen'})
         self.bot.send_sticker.assert_called_once()
+
+    def test_search_is_not_repeated(self):
+        self.handle('search_stickers', {'query': '开心'})
+        self.assertIn('error', self.handle('search_stickers', {'query': '另一个'}))
+        self.bot.stickers.search.assert_called_once()
+
+    def test_sticker_only_finishes_only_after_confirmation(self):
+        self.handle('search_stickers', {'query': '开心'})
+        self.assertTrue(self.handle('send_sticker', {'sticker_id': 'chosen', 'reply_mode': 'sticker_only'})['finish_without_text'])
+
+    def test_with_text_keeps_followup_enabled(self):
+        self.handle('search_stickers', {'query': '开心'})
+        self.assertFalse(self.handle('send_sticker', {'sticker_id': 'chosen', 'reply_mode': 'with_text'})['finish_without_text'])
+
+    def previous_sticker(self, group='111@chatroom'):
+        self.bot.state.execute('INSERT INTO replies VALUES(0,?,?,?, ?,?)', (group, 'confirmed', int(time.time()), '', ''))
+        self.bot.state.execute('INSERT INTO sticker_jobs VALUES(0,?,?,?,?)', (group, 'prior', 'confirmed', int(time.time())))
+
+    def test_consecutive_automatic_sticker_is_blocked(self):
+        self.previous_sticker()
+        self.assertFalse(self.bot.may_offer_sticker({'id': 1, 'group_id': '111@chatroom', 'prompt': '哈哈'}))
+
+    def test_explicit_request_has_no_cooldown(self):
+        self.previous_sticker()
+        self.assertTrue(self.bot.may_offer_sticker({'id': 1, 'group_id': '111@chatroom', 'prompt': '再发个表情包'}))
+
+    def test_other_group_does_not_affect_policy(self):
+        self.previous_sticker('222@chatroom')
+        self.assertTrue(self.bot.may_offer_sticker({'id': 1, 'group_id': '111@chatroom', 'prompt': '哈哈'}))
+
+    def test_text_turn_resets_alternation_without_waiting(self):
+        self.previous_sticker()
+        self.bot.state.execute("INSERT INTO replies VALUES(1,'111@chatroom','confirmed',?,'','哈哈')", (int(time.time()),))
+        self.assertTrue(self.bot.may_offer_sticker({'id': 2, 'group_id': '111@chatroom', 'prompt': '尴尬了😂'}))
+
+    def test_user_can_request_no_sticker(self):
+        self.assertFalse(self.bot.may_offer_sticker({'id': 1, 'group_id': '111@chatroom', 'prompt': '别发表情包，认真说'}))
+
+    def test_process_marks_sticker_only_confirmed_without_text_send(self):
+        self.bot.config['max_age_seconds'] = 300
+        self.bot.state.execute("INSERT INTO replies VALUES(1,'111@chatroom','pending',?,'发个表情包',NULL)", (int(time.time()),))
+        self.bot.messages_for = Mock(return_value=([{'role':'system','content':'test'}],0))
+        self.bot.ai = Mock()
+        self.bot.send = Mock()
+        def complete(*args, **kwargs):
+            self.bot.state.execute("INSERT INTO sticker_jobs VALUES(1,'111@chatroom','chosen','confirmed',?)", (int(time.time()),))
+            return '', {}
+        with patch('bot.chat_complete', side_effect=complete):
+            self.bot.process_group('111@chatroom')
+        self.assertEqual(self.bot.state.execute('SELECT status FROM replies WHERE id=1').fetchone()[0], 'confirmed')
+        self.bot.send.assert_not_called()
+
+    def test_empty_response_without_delivery_is_rejected(self):
+        self.bot.config['max_age_seconds'] = 300
+        self.bot.state.execute("INSERT INTO replies VALUES(1,'111@chatroom','pending',?,'发个表情包',NULL)", (int(time.time()),))
+        self.bot.messages_for = Mock(return_value=([{'role':'system','content':'test'}],0))
+        self.bot.ai = Mock()
+        with patch('bot.chat_complete', return_value=('',{})), self.assertRaisesRegex(RuntimeError, 'without a confirmed'):
+            self.bot.process_group('111@chatroom')

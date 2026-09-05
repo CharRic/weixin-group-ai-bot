@@ -12,8 +12,9 @@ STICKER_TOOLS = [
   'parameters': {'type': 'object', 'properties': {'query': {'type': 'string', 'description': '简短表情关键词'},
        'source': {'type': 'string', 'enum': ['search', 'favorites']}}, 'required': ['query'], 'additionalProperties': False}}},
  {'type': 'function', 'function': {'name': 'send_sticker',
-  'description': '把本轮搜索返回的一张微信原生表情发送到当前群，群目标由程序绑定。confirmed才表示已发送。',
-  'parameters': {'type': 'object', 'properties': {'sticker_id': {'type': 'string'}},
+  'description': '把本轮搜索返回的一张微信原生表情发送到当前群。表情已表达清楚时用sticker_only结束回复；确需补一句才用with_text。confirmed才表示已发送。',
+  'parameters': {'type': 'object', 'properties': {'sticker_id': {'type': 'string'},
+       'reply_mode': {'type': 'string', 'enum': ['sticker_only', 'with_text'], 'description': '默认sticker_only：只发表情，不附发送成功等机械说明'}},
        'required': ['sticker_id'], 'additionalProperties': False}}}]
 
 

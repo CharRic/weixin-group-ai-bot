@@ -113,3 +113,19 @@ class ToolTests(unittest.TestCase):
         chat_complete(self.ai, self.messages, self.weather, token_budget=10)
         self.ai.request.assert_not_called()
         self.weather.query.assert_not_called()
+
+    def test_confirmed_sticker_only_stops_without_another_model_call(self):
+        from native_stickers import STICKER_TOOLS
+        self.ai.request.return_value = response(calls=[call('send_sticker', '{"sticker_id":"chosen"}')])
+        handler = Mock(return_value={'status':'confirmed','finish_without_text':True})
+        text, _ = chat_complete(self.ai,self.messages,self.weather,extra_tools=STICKER_TOOLS,tool_handler=handler)
+        self.assertEqual(text, '')
+        self.ai.request.assert_called_once()
+
+    def test_uncertain_sticker_does_not_silently_finish(self):
+        from native_stickers import STICKER_TOOLS
+        self.ai.request.side_effect = [response(calls=[call('send_sticker', '{"sticker_id":"chosen"}')]),response('这次没确认发成功。')]
+        handler = Mock(return_value={'status':'delivery_uncertain','finish_without_text':True})
+        text, _ = chat_complete(self.ai,self.messages,self.weather,extra_tools=STICKER_TOOLS,tool_handler=handler)
+        self.assertTrue(text)
+        self.assertEqual(self.ai.request.call_count,2)
