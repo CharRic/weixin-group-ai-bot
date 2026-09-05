@@ -5,6 +5,7 @@
   "poll_seconds": 3,
   "max_age_seconds": 300,
   "vision_enabled": true,
+  "realtime_enabled": true,
   "system_prompt_file": "persona.txt",
   "context_token_budget": 12800,
   "context_scan_messages": 2000,
