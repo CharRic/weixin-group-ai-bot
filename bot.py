@@ -387,7 +387,7 @@ class Bot:
             anchor = dict(row)
         anchor['shard'] = trigger['shard']
         kind = anchor['local_type'] & 0xffffffff
-        candidates, reference = [], None
+        candidates, reference, reference_sender = [], None, None
         if kind == 3:
             candidates = [anchor]
         elif kind == 49:
@@ -395,8 +395,16 @@ class Bot:
                 xml = message_xml(anchor['message_content'], anchor['sender'])
                 ref = xml.find('./appmsg/refermsg')
                 if ref is not None and ref.findtext('type') == '3':
-                    if ref.findtext('fromusr') != group_id:
+                    source = (ref.findtext('fromusr') or '').strip()
+                    chat = (ref.findtext('chatusr') or '').strip()
+                    # Some clients encode the image sender, not the room, in
+                    # fromusr. The authoritative scope remains this group's
+                    # message table; never search another room for the svrid.
+                    if any(value.endswith('@chatroom') and value != group_id
+                           for value in (source, chat)):
                         return '引用图片不属于当前群，未读取。'
+                    if source and source != group_id:
+                        reference_sender = source
                     reference = int(ref.findtext('svrid') or '0')
                     if reference <= 0:
                         return '无法定位引用的图片。'
@@ -419,6 +427,9 @@ class Bot:
                     if reference is not None:
                         query += 'AND m.server_id=? '
                         params.append(reference)
+                        if reference_sender:
+                            query += 'AND n.user_name=? '
+                            params.append(reference_sender)
                     else:
                         query += 'AND m.create_time>=? AND n.user_name=? '
                         params += [anchor['create_time'] - 120, anchor['sender']]

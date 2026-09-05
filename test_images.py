@@ -151,6 +151,39 @@ class ImageSelectionTests(unittest.TestCase):
         self.assertNotIn('B-private', payload)
         self.assertNotIn('image_url', payload)
 
+    def set_reference(self, source, server_id, chat=''):
+        xml = ('<msg><appmsg><refermsg><type>3</type><fromusr>' + source +
+            '</fromusr><chatusr>' + chat + '</chatusr><svrid>' + str(server_id) +
+            '</svrid></refermsg></appmsg></msg>')
+        self.c.execute('UPDATE '+self.t+' SET local_type=?,message_content=? WHERE local_id=20', ((57<<32)|49, xml))
+
+    def test_sender_based_reference_resolves_same_group(self):
+        self.set_reference('wxid_a', 13)
+        self.assertIn('Only A picture', self.bot.image_context_for(self.fixture.trigger))
+        args = self.bot.images.describe.call_args.args
+        self.assertEqual((args[1], args[3]['local_id']), ('111@chatroom', 13))
+
+    def test_sender_based_reference_can_quote_other_member(self):
+        self.set_reference('wxid_bot', 15)
+        self.assertIn('Only A picture', self.bot.image_context_for(self.fixture.trigger))
+        self.assertEqual(self.bot.images.describe.call_args.args[3]['local_id'], 15)
+
+    def test_sender_mismatch_does_not_fall_back_to_nearby_image(self):
+        self.set_reference('wxid_b', 13)
+        self.assertIn('未在当前群', self.bot.image_context_for(self.fixture.trigger))
+        self.bot.images.describe.assert_not_called()
+
+    def test_sender_reference_to_other_room_server_id_is_not_read(self):
+        self.c.execute('UPDATE '+table_for('222@chatroom')+' SET local_type=3 WHERE server_id=113')
+        self.set_reference('wxid_b', 113)
+        self.assertIn('未在当前群', self.bot.image_context_for(self.fixture.trigger))
+        self.bot.images.describe.assert_not_called()
+
+    def test_explicit_other_chat_is_rejected_for_sender_reference(self):
+        self.set_reference('wxid_a', 13, '222@chatroom')
+        self.assertIn('不属于当前群', self.bot.image_context_for(self.fixture.trigger))
+        self.bot.images.describe.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()
