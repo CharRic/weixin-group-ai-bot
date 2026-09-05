@@ -99,16 +99,19 @@ def estimate_tokens(value):
     return int((cjk + (len(text) - cjk + 3) // 4) * 1.25) + 16
 
 
-def chat_complete(ai, messages, weather, token_budget=12800):
-    """At most two weather calls; ordinary chat remains a single model request."""
+def chat_complete(ai, messages, weather, token_budget=12800, extra_tools=(), tool_handler=None):
+    """Bounded tools; only the caller's bound handler may perform sticker delivery."""
     inputs = list(messages)
     total = 0
     remaining = 2
-    for _ in range(2):
-        if estimate_tokens({'messages': inputs, 'tools': [WEATHER_TOOL]}) > token_budget:
-            return '这次查询资料太长了，请把问题缩小到一个城市、一天。', {'total_tokens': total}
+    other_remaining = 4
+    tools = ([WEATHER_TOOL] if weather is not None else []) + list(extra_tools)
+    allowed_extra = {t['function']['name'] for t in extra_tools}
+    for _ in range(4 if extra_tools else 2):
+        if estimate_tokens({'messages': inputs, 'tools': tools}) > token_budget:
+            return '这次工具资料太长了，请把问题缩小一点。', {'total_tokens': total}
         payload = {'model': ai.config['model'], 'messages': inputs, 'stream': False,
-                   'max_tokens': ai.config.get('max_tokens', 1024), 'tools': [WEATHER_TOOL],
+                   'max_tokens': ai.config.get('max_tokens', 1024), 'tools': tools,
                    'thinking': {'type': 'disabled'}}
         result = ai.request('/chat/completions', payload)
         total += result.get('usage', {}).get('total_tokens', 0)
@@ -120,23 +123,28 @@ def chat_complete(ai, messages, weather, token_budget=12800):
                 raise RuntimeError('API returned no text reply')
             return text, {'total_tokens': total}
         if len(calls) > 2:
-            raise RuntimeError('Too many weather tool calls')
+            raise RuntimeError('Too many tool calls')
         inputs.append({'role': 'assistant', 'content': message.get('content'), 'tool_calls': calls})
         for call in calls:
             output = {'error': '无效工具参数，未执行查询。'}
             try:
                 function = call['function']
-                if remaining and function['name'] == 'get_weather' and len(function['arguments']) <= 1024:
+                if remaining and weather is not None and function['name'] == 'get_weather' and len(function['arguments']) <= 1024:
                     args = json.loads(function['arguments'])
                     if isinstance(args, dict) and set(args) <= {'city', 'country_code'}:
                         remaining -= 1
                         output = weather.query(**args)
+                elif other_remaining and function['name'] in allowed_extra and tool_handler and len(function['arguments']) <= 1024:
+                    args = json.loads(function['arguments'])
+                    if isinstance(args, dict):
+                        other_remaining -= 1
+                        output = tool_handler(function['name'], args)
             except (TypeError, ValueError, KeyError):
                 pass
             inputs.append({'role': 'tool', 'tool_call_id': call['id'],
                            'content': json.dumps(output, ensure_ascii=False)})
     inputs.append({'role': 'system', 'content': '本轮查询次数已用完，仅依据已获得的数据简短回答。无数据时说明，不猜测。'})
     if estimate_tokens(inputs) > token_budget:
-        return '这次查询资料太长了，请把问题缩小到一个城市、一天。', {'total_tokens': total}
+        return '这次工具资料太长了，请把问题缩小一点。', {'total_tokens': total}
     text, usage = ai.complete(inputs)
     return text, {'total_tokens': total + usage.get('total_tokens', 0)}
